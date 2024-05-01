@@ -1,22 +1,17 @@
-use std::{array, cell};
+use std::{thread::sleep, time::Duration};
 
-use macroquad::{miniquad::window, prelude::*};
+use macroquad::prelude::*;
 
 const WINDOW_HEIGHT: i32 = 1000;
 const WINDOW_WIDTH: i32 = 1000;
-const CELL_SIZE: i32 = 20;
+const CELL_SIZE: i32 = 10;
 const GRID_THICKNESS: f32 = 1.0;
 
 const GRID_WIDTH: usize = (WINDOW_WIDTH / CELL_SIZE) as usize;
 const GRID_HEIGHT: usize = (WINDOW_HEIGHT / CELL_SIZE) as usize;
 const CELL_ALIVE: i32 = 1;
 const CELL_DEAD: i32 = 0;
-
-struct Cell {
-    x: u32,
-    y: u32,
-    alive: bool,
-}
+const FPS: i32 = 60;
 
 fn draw_grid(width: i32, height: i32) {
     for i in (0..(screen_width() as u32)).step_by(width as usize) {
@@ -41,14 +36,11 @@ fn draw_grid(width: i32, height: i32) {
     }
 }
 
-fn update_cells(cells: &[[i32; GRID_WIDTH]; GRID_HEIGHT]) {}
-
 async fn game() {
     let mut cells: [[i32; GRID_WIDTH]; GRID_HEIGHT] = [[CELL_DEAD; GRID_WIDTH]; GRID_HEIGHT];
-    let mut cells_after: [[i32; GRID_WIDTH]; GRID_HEIGHT] = [[CELL_DEAD; GRID_WIDTH]; GRID_HEIGHT];
 
     // generate start positions for alive cells
-    for _ in 0..25 {
+    for _ in 0..5000 {
         let rx = rand::gen_range(0, GRID_WIDTH);
         let ry = rand::gen_range(0, GRID_HEIGHT);
 
@@ -56,8 +48,11 @@ async fn game() {
     }
 
     loop {
-        frame(&cells);
-
+        clear_background(BLACK);
+        // draw_grid(CELL_SIZE, CELL_SIZE);
+        let new_cells = draw_and_mutate_cells(&cells);
+        cells = new_cells;
+        sleep(Duration::from_secs_f32(1.0 / FPS as f32));
         next_frame().await
     }
 
@@ -74,24 +69,59 @@ fn draw_cell(x: i32, y: i32) {
     );
 }
 
-fn frame(cells: &[[i32; GRID_WIDTH]; GRID_HEIGHT]) {
-    clear_background(BLACK);
+fn get_cell_neighbours(cell_x: i32, cell_y: i32) -> Vec<(i32, i32)> {
+    let mut neighbours = vec![];
+    for x in cell_x - 1..=cell_x + 1 {
+        for y in cell_y - 1..=cell_y + 1 {
+            if ((x, y) == (cell_x, cell_y))
+                | (x < 0)
+                | (y < 0)
+                | (x >= GRID_WIDTH as i32)
+                | (y >= GRID_HEIGHT as i32)
+            {
+                continue;
+            }
+            neighbours.push((x, y))
+        }
+    }
+    return neighbours;
+}
 
-    draw_grid(CELL_SIZE, CELL_SIZE);
+fn get_alive_neighbours_count(
+    neighbours: Vec<(i32, i32)>,
+    cells: &[[i32; GRID_WIDTH]; GRID_HEIGHT],
+) -> i32 {
+    let mut count = 0;
+    for neighbour in neighbours.iter() {
+        if cells[neighbour.0 as usize][neighbour.1 as usize] == CELL_ALIVE {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+fn draw_and_mutate_cells(
+    cells: &[[i32; GRID_WIDTH]; GRID_HEIGHT],
+) -> [[i32; GRID_WIDTH]; GRID_HEIGHT] {
+    let mut new_cells = cells.clone();
 
     for (i, row) in cells.iter().enumerate() {
-        for (j, _) in row.iter().enumerate() {
-            if cells[i][j] == CELL_ALIVE {
+        for (j, cell) in row.iter().enumerate() {
+            if *cell == CELL_ALIVE {
                 draw_cell(i as i32, j as i32);
+            }
+
+            let neighbours = get_cell_neighbours(i as i32, j as i32);
+            let alive_count = get_alive_neighbours_count(neighbours, &cells);
+
+            if (alive_count < 2) | (alive_count > 3) {
+                new_cells[i][j] = CELL_DEAD;
+            } else if (alive_count == 3) | ((alive_count == 2) & (*cell == CELL_ALIVE)) {
+                new_cells[i][j] = CELL_ALIVE;
             }
         }
     }
-
-    // draw_line(40.0, 40.0, 100.0, 200.0, 15.0, BLUE);
-    // draw_rectangle(screen_width() / 2.0 - 60.0, 100.0, 120.0, 60.0, GREEN);
-    // draw_circle(screen_width() - 30.0, screen_height() - 30.0, 15.0, YELLOW);
-
-    // draw_text("IT WORKS!", 20.0, 20.0, 30.0, DARKGRAY);
+    return new_cells;
 }
 
 fn window_conf() -> Conf {
